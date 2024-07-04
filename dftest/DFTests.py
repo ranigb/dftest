@@ -13,8 +13,6 @@ import re
 from configparser import ConfigParser
 # partial for dividing generic tests, reduce for flattening list of invalid index lists
 from functools import partial, reduce
-# For running pandasgui in the background (so execution is not blocked until user closes it)
-from multiprocessing import Process
 # For better type hinting
 from typing import List, Callable, Hashable, Iterable, Union, Tuple
 # For graphing
@@ -41,13 +39,9 @@ from dftest.style import StyleFile, Style
 
 # Certain GUIs throw an exception when imported or used in colab.
 if not utils.in_colab():
-    # For displaying coverage and result graphs
-    import pandasgui
     # For graph graphics
     import matplotlib
-
     matplotlib.use('TkAgg')
-
 
 class DFTests:
     """
@@ -171,6 +165,7 @@ class DFTests:
 
             if not test_cfg.getboolean('ignore', False):
                 try:
+                    print(test)
                     test_func = utils.get_func_from_addr(test)
                 except ValueError as e:
                     raise ValueError(f'Nonexistent test specified in {config_file}: {test}.')
@@ -306,8 +301,7 @@ class ColumnResults:
     The results of tests over a column using one or more multiple predicates.
 
     This class is used to display results for individual columns, as opposed to thw whole dataframe, both ny writing
-    to stdout, displaying summary graphs for the column or individual tests and showing the invalid rows for the column
-    in pandasgui.
+    to stdout and displaying summary graphs for the column or individual tests.
     """
     plt = plt
 
@@ -453,20 +447,6 @@ class ColumnResults:
 
     def get_invalid_rows(self):
         return self.dataframe.iloc[sorted(self.invalid_row_index)]
-
-    def open_invalid_rows(self, index: Union[Index, List[str]] = None, sample_size: int = None):
-        """
-        Opens the invalid rows at the specified columns in the pandasgui interface.
-
-        :param index: an iterable of the columns to include. This will always include this column.
-        :param sample_size: if specified, opens the first n invalid rows.
-        """
-        index = {self.column} if index is None else set(index).union({self.column})
-        failures = self.get_invalid_rows()[index]
-        if sample_size is not None:
-            failures = failures.sample(sample_size)
-        pandas_proc = Process(target=pandasgui.show, args=tuple(failures))
-        return pandas_proc.start()
 
     def print(self, columns_to_include=None, column_number=None, print_all_failed=False):
         """
@@ -650,7 +630,6 @@ class DFTestResults:
         colors = [self.stylefile.dataframe_style.values[-1][0], self.stylefile.dataframe_style.values[0][0]]
 
         fig, (ax1, ax2) = plt.subplots(2)
-
         tested_data = [self.num_cols_tested, self.num_cols_untested]
         ax1.pie(tested_data, colors=colors, autopct=utils.make_autopct(tested_data))
         ax1.legend(['Tested', 'Untested'])
@@ -681,20 +660,6 @@ class DFTestResults:
 
     def get_invalid_rows(self):
         return self.dataframe.iloc[sorted(self.invalid_row_index)]
-
-    def open_invalid_rows(self, index: Union[Index, List[str]] = None, sample_size: int = None):
-        """
-        Opens the invalid rows at the specified columns in the pandasgui interface.
-
-        :param index: an iterable of the columns to include. This will always include this column.
-        :param sample_size: if specified, opens the first n invalid rows.
-        """
-        index = self.dataframe.index if index is None else index
-        failures = self.get_invalid_rows()[index]
-        if sample_size is not None:
-            failures = failures.sample(sample_size)
-        pandas_proc = Process(target=pandasgui.show, args=tuple(failures))
-        return pandas_proc.start()
 
     def get_row_results(self, index):
         return RowResults(index, [res for res in self.results
