@@ -11,7 +11,7 @@ with open('requirements.txt') as req_file:
 setup(
     name='dftest',
     packages=['dftest'],
-    version='0.5.0',
+    version='0.5.4',
     scripts=['bin/dftest'],
     install_requires=deps,
     description='A library for testing and analyzing data integrity.',

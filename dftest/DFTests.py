@@ -21,6 +21,7 @@ from matplotlib import pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.patches import Patch
 from pandas import DataFrame, Index
+import json
 
 # For getting a dataframe in testing (via read_csv) and setting dataframe to not print dimensions (via options
 # attribute). from-import not used to make the purpose of these methods more explicit.
@@ -38,7 +39,7 @@ from dftest.Test import TestResult, Test, IndexTestResult, BooleanTestResult
 from dftest.style import StyleFile, Style
 
 # Certain GUIs throw an exception when imported or used in colab.
-if not utils.in_colab():
+if not (utils.in_colab() or utils.in_notebook()):
     # For graph graphics
     import matplotlib
     matplotlib.use('TkAgg')
@@ -487,6 +488,49 @@ class ColumnResults:
 
             print()
 
+    def to_json(self, columns_to_include=None, column_number=None, print_all_failed=False):
+        """
+        Prints the results of the column to json. 
+
+        :param columns_to_include: columns to include when printing rows of failure.
+        By default, only row number and this column are printed.
+
+        :param column_number: specify a column index in the printed title.
+        By default, only row number and this column are printed.
+
+        """
+        data = {}
+        data['column'] = self.column
+        if (column_number is not None):
+            data['columns_number'] = column_number
+        for j, result in enumerate(self.results, 1):
+            test = {}
+            test['test_name'] = result.from_test.name
+            predicate = result.from_test.predicate
+            if (hasattr(predicate, 'explanation')):
+                test['test_explanation'] = predicate.explanation
+            test['test_success_threshold'] = result.from_test.success_threshold
+            test['tested_columns'] = str(result.from_test.tested_columns)
+            if isinstance(result, BooleanTestResult):
+                test['result'] = bool(result.success)
+            else:
+                test['num_valid'] = result.num_valid
+                test['num_rows'] = self.num_rows
+                invalid_rows = result.get_invalid_rows(self.dataframe)
+                test['num_invalid_rows'] = len(invalid_rows)
+                if not(print_all_failed):
+                    invalid_rows = invalid_rows.iloc[:10]
+
+                columns_to_include = set() if columns_to_include is None else set(columns_to_include)
+                columns_to_include = columns_to_include.union({self.column})
+                columns_to_include = utils.order_columns(self.dataframe.columns, columns_to_include)
+                if not len(invalid_rows.index) == 0:
+                    test['invalid_rows'] = invalid_rows[columns_to_include].to_json(orient='records')
+
+                
+            data[j] = test
+        jsn = json.dumps(data)
+        return jsn
 
 class RowResults:
     def __init__(self, index, results: List[TestResult]):
@@ -685,8 +729,9 @@ class DFTestResults:
         num_cols = len(self.dataframe.columns)
 
         print(f'Columns Tested: {self.num_cols_tested}/{num_cols} ({round(self.num_cols_tested / num_cols * 100)}%).')
-        print(
-            f'Columns valid: {self.num_cols_valid}/{self.num_cols_tested} ({round(self.num_cols_valid / self.num_cols_tested * 100, 2)}%).')
+        if (self.num_cols_tested > 0):
+            print(
+                f'Columns valid: {self.num_cols_valid}/{self.num_cols_tested} ({round(self.num_cols_valid / self.num_cols_tested * 100, 2)}%).')
 
         if not stub:  # If stub not set, print details for individual columns.
             print()
@@ -697,3 +742,29 @@ class DFTestResults:
                         and (column in self.cols_checked and not column_res.valid or show_valid_cols):
                     column_res.print(columns_to_include=[self.dataframe.columns[0]], column_number=i,
                                      print_all_failed=print_all_failed)
+
+    def to_json(self, show_valid_cols=False, show_untested=False, print_all_failed=False):
+        """
+        Produces a coverage report of the tests done — how many of the columns were tested, how many were valid,
+        and a sample of invalid rows for each column.
+
+        :param show_valid_cols: print result summary for columns that were completely valid. Default false.
+        :param show_untested: show columns without tests. Default false.
+        :param stub: don't print individual data for each column, just portions tested and valid. Default false.
+        :param print_all_failed: print all rows where a test failed. By default only prints up to 10.
+        """
+
+        num_cols = len(self.dataframe.columns)
+        data = {}
+        data['columns_tested'] = self.num_cols_tested
+        data['total_columns'] = num_cols
+        data['valid_columns'] = self.num_cols_valid
+
+        for i, column in enumerate(self.dataframe.columns, 1):
+            column_res = self.get_column_results(column)
+            if (column in self.cols_checked):
+                col_data = json.loads(column_res.to_json(column_number=i, print_all_failed=print_all_failed))
+            else:
+                col_data = {'column': column, 'tested': False, 'columns_number': i}
+            data[i] = col_data
+        return json.dumps(data)
