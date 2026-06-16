@@ -42,7 +42,10 @@ from dftest.style import StyleFile, Style
 if not (utils.in_colab() or utils.in_notebook()):
     # For graph graphics
     import matplotlib
-    matplotlib.use('TkAgg')
+    try:
+        matplotlib.use('TkAgg')
+    except Exception:
+        matplotlib.use('Agg')
 
 class DFTests:
     """
